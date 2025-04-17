@@ -678,20 +678,21 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
             unique = len(newConstraint)
             name = c.local_name + "_%s" % unique
 
-            NL = c.body.polynomial_degree() not in (0, 1)
+            general_NL = c.body.polynomial_degree() not in (0, 1, 2)
+            polynomial_degree = c.body.polynomial_degree()
             EPS = self._config.EPS
             mode = self._config.perspective_function
 
             # We need to evaluate the expression at the origin *before*
             # we substitute the expression variables with the
             # disaggregated variables
-            if not NL or mode == "FurmanSawayaGrossmann":
+            if not general_NL or mode == "FurmanSawayaGrossmann":
                 h_0 = clone_without_expression_components(
                     c.body, substitute=zero_substitute_map
                 )
 
             y = disjunct.binary_indicator_var
-            if NL:
+            if general_NL:
                 if mode == "LeeGrossmann":
                     sub_expr = clone_without_expression_components(
                         c.body,
@@ -720,18 +721,67 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                     expr = ((1 - EPS) * y + EPS) * sub_expr - EPS * h_0 * (1 - y)
                 else:
                     raise RuntimeError("Unknown NL Hull mode")
+            elif polynomial_degree == 2:
+                # For quadratic constraints, we need to use the exact hull formulation:
+                # For a constraint x'Qx + c'x + d ≤ 0, the hull is v'Qv + c'vy + dy² ≤ 0
+                
+                # Generate standardized representation of the expression
+                repn = generate_standard_repn(c.body)
+                
+                # Get the constant term (d)
+                const_term = repn.constant
+                
+                # Create the transformed expression
+                if repn.is_quadratic():
+                    # Initialize expression
+                    expr = 0
+                    
+                    # Process quadratic part (x'Qx -> v'Qv)
+                    for i, (var_i, var_j) in enumerate(repn.quadratic_vars):
+                        coef = repn.quadratic_coefs[i]
+                        
+                        # Get their disaggregated versions (v)
+                        v_i = var_substitute_map.get(id(var_i), var_i)
+                        v_j = var_substitute_map.get(id(var_j), var_j)
+                        
+                        # Check if this is a squared term (x²)
+                        if var_i is var_j:
+                            # For x², the exact hull is v²
+                            expr += coef * v_i**2
+                        else:
+                            # For cross-terms x_i*x_j, the exact hull is v_i*v_j
+                            expr += coef * v_i * v_j
+                    
+                    # Process linear part (c'x -> c'vy)
+                    for i, coef in enumerate(repn.linear_coefs):
+                        var = repn.linear_vars[i]
+                        # Get the disaggregated version (v)
+                        v = var_substitute_map.get(id(var), var)
+                        # Multiply by y
+                        expr += coef * v * y
+                    
+                    # Process constant part (d -> dy²)
+                    if const_term:
+                        if not c.equality and c.lower is not None and c.upper is None and c.lower == 0 and const_term < 0:
+                            expr += const_term * y
+                        elif not c.equality and c.lower is None and c.upper is not None and c.upper == 0 and const_term > 0:
+                            expr += const_term * y
+                        else:
+                            expr += const_term * y**2
+                else:
+                    raise RuntimeError("Recognized quadratic constraint, but repn is not quadratic")
             else:
                 expr = clone_without_expression_components(
                     c.body, substitute=var_substitute_map
                 )
 
             if c.equality:
-                if NL:
+                if general_NL:
                     # ESJ TODO: This can't happen right? This is the only
                     # obvious case where someone has messed up, but this has to
                     # be nonconvex, right? Shouldn't we tell them?
                     newConsExpr = expr == c.lower * y
-                else:
+                elif polynomial_degree != 2:
                     v = list(EXPR.identify_variables(expr))
                     if len(v) == 1 and not c.lower:
                         # Setting a variable to 0 in a disjunct is
@@ -749,6 +799,8 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                         constraint_map.src_constraint[v[0]] = c
                         continue
                     newConsExpr = expr - (1 - y) * h_0 == c.lower * y
+                else:
+                    newConsExpr = expr == c.lower * y**2
 
                 if obj.is_indexed():
                     newConstraint.add((name, i, 'eq'), newConsExpr)
@@ -777,8 +829,10 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                 if self._generate_debug_messages:
                     _name = c.getname(fully_qualified=True)
                     logger.debug("GDP(Hull): Transforming constraint " + "'%s'", _name)
-                if NL:
+                if general_NL:
                     newConsExpr = expr >= c.lower * y
+                elif polynomial_degree == 2:
+                    newConsExpr = expr >= c.lower * y**2
                 else:
                     newConsExpr = expr - (1 - y) * h_0 >= c.lower * y
 
@@ -799,8 +853,10 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                 if self._generate_debug_messages:
                     _name = c.getname(fully_qualified=True)
                     logger.debug("GDP(Hull): Transforming constraint " + "'%s'", _name)
-                if NL:
+                if general_NL:
                     newConsExpr = expr <= c.upper * y
+                elif polynomial_degree == 2:
+                    newConsExpr = expr <= c.upper * y**2
                 else:
                     newConsExpr = expr - (1 - y) * h_0 <= c.upper * y
 
