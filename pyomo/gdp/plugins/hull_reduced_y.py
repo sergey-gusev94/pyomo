@@ -53,6 +53,7 @@ from pyomo.gdp.util import (
 from pyomo.core.util import target_list
 from pyomo.util.vars_from_expressions import get_vars_from_components
 from weakref import ref as weakref_ref
+from pyomo.repn import generate_standard_repn
 
 logger = logging.getLogger('pyomo.gdp.hull_redueced_y')
 

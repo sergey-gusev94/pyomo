@@ -725,6 +725,8 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                     expr = ((1 - EPS) * y + EPS) * sub_expr - EPS * h_0 * (1 - y)
                 else:
                     raise RuntimeError("Unknown NL Hull mode")
+                
+            
             elif polynomial_degree == 2:
                 # For quadratic constraints, we need to use the exact hull formulation:
                 # For a constraint x'Qx + c'x + d ≤ 0, the hull is v'Qv + c'vy + dy² ≤ 0
@@ -769,6 +771,10 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                         expr += const_term * y**2
                 else:
                     raise RuntimeError("Recognized quadratic constraint, but repn is not quadratic")
+            else:
+                expr = clone_without_expression_components(
+                    c.body, substitute=var_substitute_map
+                )
 
             if c.equality:
                 if general_NL:
