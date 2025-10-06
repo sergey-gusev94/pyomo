@@ -754,11 +754,14 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                     # Build Q matrix and process quadratic part
                     # First, get all unique variables to size the matrix
                     all_vars = []
+                    var_ids_seen = set()
                     for var_i, var_j in repn.quadratic_vars:
-                        if var_i not in all_vars:
+                        if id(var_i) not in var_ids_seen:
                             all_vars.append(var_i)
-                        if var_j not in all_vars:
+                            var_ids_seen.add(id(var_i))
+                        if id(var_j) not in var_ids_seen:
                             all_vars.append(var_j)
+                            var_ids_seen.add(id(var_j))
                     
                     n_vars = len(all_vars)
                     var_to_idx = {id(var): idx for idx, var in enumerate(all_vars)}
@@ -877,8 +880,7 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                             non_conv_expr += coef * v * y
                         
                         # Process constant part (d -> dy²)
-                        # Check for non-zero (const_term could be Param or numeric)
-                        if const_term != 0:
+                        if const_term:
                             non_conv_expr += const_term * y**2
                     
                     # Build conic expression if needed for any bound
@@ -912,8 +914,7 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                             linear_expr += actual_coef * v
                         
                         # Add constant term
-                        # Check for non-zero (const_term could be Param or numeric)
-                        if const_term != 0:
+                        if const_term:
                             actual_const = -const_term if negate_for_conic else const_term
                             linear_expr += actual_const * y
                         
