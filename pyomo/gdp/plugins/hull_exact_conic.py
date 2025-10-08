@@ -937,15 +937,15 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                         relaxationBlock.add_component(z_name, z)
                         
                         # Add linear constraints: z[k] = sum_j L[j,k] * v[j]
-                        z_def_constraints = Constraint(range(r))
                         z_def_name = unique_component_name(
                             relaxationBlock,
                             '_conic_z_def_%s' % c.getname(fully_qualified=True, relative_to=disjunct)
                         )
+                        z_def_constraints = Constraint(range(r))
+                        relaxationBlock.add_component(z_def_name, z_def_constraints)
                         for k in range(r):
                             z_k_expr = sum(L[j, k] * v_vector[j] for j in range(n_vars))
                             z_def_constraints.add(k, z[k] == z_k_expr)
-                        relaxationBlock.add_component(z_def_name, z_def_constraints)
                         
                         # Reformulate bilinear rotated SOC to standard SOC
                         # Original: sum(z[k]²) ≤ t*y (bilinear - solvers won't detect cone)
