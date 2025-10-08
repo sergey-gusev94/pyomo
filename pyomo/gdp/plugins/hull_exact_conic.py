@@ -922,28 +922,43 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                         conic_expr_linear = linear_expr
                         
                         # Add the conic constraint: ||L^T v||² ≤ t*y
-                        # Compute L^T @ v (matrix-vector product) using pure Pyomo
+                        # Use explicit auxiliary variables for better solver recognition
                         # L is (n_vars × r), L^T is (r × n_vars), v is n_vars
-                        # Result: z_k = sum_j L^T[k,j] * v[j] for each k in range(r)
+                        # Create z[k] auxiliary variables and linear definitions
                         
                         r = L.shape[1]  # number of positive eigenvalues
-                        z_terms = []
+                        
+                        # Create auxiliary variables z[k] for the linear transformation L^T @ v
+                        z = Var(range(r), domain=Reals)
+                        z_name = unique_component_name(
+                            relaxationBlock,
+                            '_conic_aux_z_%s' % c.getname(fully_qualified=True, relative_to=disjunct)
+                        )
+                        relaxationBlock.add_component(z_name, z)
+                        
+                        # Add linear constraints: z[k] = sum_j L[j,k] * v[j]
+                        z_def_constraints = Constraint(range(r))
+                        z_def_name = unique_component_name(
+                            relaxationBlock,
+                            '_conic_z_def_%s' % c.getname(fully_qualified=True, relative_to=disjunct)
+                        )
                         for k in range(r):
-                            z_k = sum(L[j, k] * v_vector[j] for j in range(n_vars))
-                            z_terms.append(z_k)
+                            z_k_expr = sum(L[j, k] * v_vector[j] for j in range(n_vars))
+                            z_def_constraints.add(k, z[k] == z_k_expr)
+                        relaxationBlock.add_component(z_def_name, z_def_constraints)
                         
                         # Reformulate bilinear rotated SOC to standard SOC
-                        # Original: sum(z_k²) ≤ t*y (bilinear - solvers won't detect cone)
+                        # Original: sum(z[k]²) ≤ t*y (bilinear - solvers won't detect cone)
                         # Standard SOC form: ||(2*z, t-y)||₂ ≤ t+y
-                        # Which is: sum((2*z_k)²) + (t-y)² ≤ (t+y)²
-                        # Equivalently: 4*sum(z_k²) + t² - 2ty + y² ≤ t² + 2ty + y²
-                        # Simplifies to: 4*sum(z_k²) ≤ 4ty  →  sum(z_k²) ≤ ty ✓
+                        # Which is: sum((2*z[k])²) + (t-y)² ≤ (t+y)²
+                        # Equivalently: 4*sum(z[k]²) + t² - 2ty + y² ≤ t² + 2ty + y²
+                        # Simplifies to: 4*sum(z[k]²) ≤ 4ty  →  sum(z[k]²) ≤ ty ✓
                         
-                        # Build as: sum((2*z_k)²) + (t-y)² ≤ (t+y)²
-                        soc_lhs = sum((2*z_k)**2 for z_k in z_terms) + (t - y)**2
+                        # Build SOC constraint using auxiliary variables
+                        soc_lhs = sum((2*z[k])**2 for k in range(r)) + (t - y)**2
                         soc_rhs = (t + y)**2
                         
-                        # Add the conic constraint to the relaxation block immediately
+                        # Add the conic constraint to the relaxation block
                         conic_constraint_name = unique_component_name(
                             relaxationBlock,
                             '_conic_constraint_%s' % c.getname(fully_qualified=True, relative_to=disjunct)
@@ -951,7 +966,10 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
                         conic_constraint = Constraint(expr=soc_lhs <= soc_rhs)
                         relaxationBlock.add_component(conic_constraint_name, conic_constraint)
                         
-                        # Map the conic constraint
+                        # Map the z definition constraints and conic constraint
+                        for k in range(r):
+                            constraint_map.transformed_constraints[c].append(z_def_constraints[k])
+                            constraint_map.src_constraint[z_def_constraints[k]] = c
                         constraint_map.transformed_constraints[c].append(conic_constraint)
                         constraint_map.src_constraint[conic_constraint] = c
 
