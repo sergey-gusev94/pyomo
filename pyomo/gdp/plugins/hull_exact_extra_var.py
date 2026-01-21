@@ -1146,17 +1146,5 @@ class Hull_Reformulation_Extra_Var(GDP_to_MIP_Transformation):
         return cons
 
 
-@TransformationFactory.register(
-    'gdp.chull',
-    doc="[DEPRECATED] please use 'gdp.hull' to get the Hull transformation.",
-)
-@deprecated(
-    "The 'gdp.chull' name is deprecated. "
-    "Please use the more apt 'gdp.hull' instead.",
-    logger='pyomo.gdp',
-    version="5.7",
-)
-class _Deprecated_Name_Hull(Hull_Reformulation):
-    def __init__(self):
-        super(_Deprecated_Name_Hull, self).__init__()
+
 
