@@ -105,6 +105,14 @@ class Hull_Reformulation(GDP_to_MIP_Transformation):
         'LeeGrossmann', or 'GrossmannLee'
     EPS : float
         The value to use for epsilon [default: 1e-4]
+    exact_hull_quadratic : bool
+        If True, quadratic constraints (polynomial degree 2) are
+        reformulated using the exact hull instead of the standard
+        perspective function. Convex quadratics are handled via a
+        rotated second-order cone reformulation; concave quadratics
+        use a linear McCormick-based relaxation; and mixed-curvature
+        quadratics fall back to the standard perspective function.
+        Requires NumPy. [default: False]
     eigenvalue_tolerance : float
         Numerical tolerance for eigenvalue-based positive/negative
         semi-definite checks when using the exact hull reformulation for
